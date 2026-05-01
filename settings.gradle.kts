@@ -29,3 +29,8 @@ dependencyResolutionManagement {
 }
 
 include(":composeApp")
+include(":core:common")
+include(":core:designsystem")
+include(":feature:spaces")
+include(":core:logging")
+include(":feature:tasks")

@@ -12,20 +12,37 @@ import com.espimsystems.mespace.core.common.coroutines.DefaultAppDispatchers
 import com.espimsystems.mespace.core.common.id.UuidGenerator
 import com.espimsystems.mespace.core.common.session.UserSession
 import com.espimsystems.mespace.core.common.time.SystemClockProvider
-import com.espimsystems.mespace.features.spaces.data.repository.FakeSpacesRepository
-import com.espimsystems.mespace.features.spaces.domain.usecase.CreateSpaceUseCase
-import com.espimsystems.mespace.features.spaces.domain.usecase.ObserveSpacesUseCase
-import com.espimsystems.mespace.features.spaces.presentation.SpacesComponent
-import com.espimsystems.mespace.features.spaces.presentation.SpacesEffect
-import com.espimsystems.mespace.features.spaces.presentation.SpacesScreen
-import com.espimsystems.mespace.features.tasks.presentation.TasksPlaceholderScreen
+import com.espimsystems.mespace.core.logging.AppLogTags
+import com.espimsystems.mespace.core.logging.AppLogger
+import com.espimsystems.mespace.feature.spaces.data.repository.FakeSpacesRepository
+import com.espimsystems.mespace.feature.spaces.domain.usecase.CreateSpaceUseCase
+import com.espimsystems.mespace.feature.spaces.domain.usecase.ObserveSpacesUseCase
+import com.espimsystems.mespace.feature.spaces.presentation.SpacesComponent
+import com.espimsystems.mespace.feature.spaces.presentation.SpacesEffect
+import com.espimsystems.mespace.feature.spaces.presentation.SpacesScreen
+import com.espimsystems.mespace.feature.tasks.data.repository.FakeTasksRepository
+import com.espimsystems.mespace.feature.tasks.domain.usecase.CreateTaskUseCase
+import com.espimsystems.mespace.feature.tasks.domain.usecase.DeleteTaskUseCase
+import com.espimsystems.mespace.feature.tasks.domain.usecase.ObserveTasksUseCase
+import com.espimsystems.mespace.feature.tasks.domain.usecase.UpdateTaskStatusUseCase
+import com.espimsystems.mespace.feature.tasks.presentation.TasksComponent
+import com.espimsystems.mespace.feature.tasks.presentation.TasksEffect
+import com.espimsystems.mespace.feature.tasks.presentation.ui.screens.TasksScreen
 import com.espimsystems.mespace.features.welcome.presentation.WelcomeComponent
 import com.espimsystems.mespace.features.welcome.presentation.WelcomeEffect
 import com.espimsystems.mespace.features.welcome.presentation.WelcomeScreen
 
 @Composable
-fun AppNavigation() {
+fun AppNavigation(
+    logger: AppLogger
+) {
     val navigator = remember { AppNavigator() }
+
+    LaunchedEffect(Unit) {
+        logger.debug(AppLogTags.Navigation) {
+            "AppNavigation started."
+        }
+    }
 
     val currentUser = remember {
         UserSession(
@@ -53,6 +70,26 @@ fun AppNavigation() {
         )
     }
 
+    val tasksRepository = remember {
+        FakeTasksRepository()
+    }
+
+    val observeTasksUseCase = remember {
+        ObserveTasksUseCase(tasksRepository)
+    }
+
+    val createTaskUseCase = remember {
+        CreateTaskUseCase(tasksRepository)
+    }
+
+    val updateTaskStatusUseCase = remember {
+        UpdateTaskStatusUseCase(tasksRepository)
+    }
+
+    val deleteTaskUseCase = remember {
+        DeleteTaskUseCase(tasksRepository)
+    }
+
     NavDisplay(
         backStack = navigator.backStack,
         onBack = {
@@ -72,12 +109,21 @@ fun AppNavigation() {
                         currentUser = currentUser,
                         observeSpacesUseCase = observeSpacesUseCase,
                         createSpaceUseCase = createSpaceUseCase,
+                        logger = logger,
                     )
                 }
 
                 is AppRoute.Tasks -> NavEntry(route) {
-                    TasksPlaceholderScreen(
+                    TasksRoute(
+                        navigator = navigator,
+                        spaceId = route.spaceId,
                         spaceName = route.spaceName,
+                        currentUser = currentUser,
+                        observeTasksUseCase = observeTasksUseCase,
+                        createTaskUseCase = createTaskUseCase,
+                        updateTaskStatusUseCase = updateTaskStatusUseCase,
+                        deleteTaskUseCase = deleteTaskUseCase,
+                        logger = logger,
                     )
                 }
             }
@@ -120,6 +166,7 @@ private fun SpacesRoute(
     currentUser: UserSession,
     observeSpacesUseCase: ObserveSpacesUseCase,
     createSpaceUseCase: CreateSpaceUseCase,
+    logger: AppLogger
 ) {
     val componentScope = rememberCoroutineScope()
 
@@ -128,6 +175,7 @@ private fun SpacesRoute(
             currentUser = currentUser,
             observeSpacesUseCase = observeSpacesUseCase,
             createSpaceUseCase = createSpaceUseCase,
+            logger = logger,
             componentScope = componentScope,
             dispatchers = DefaultAppDispatchers,
         )
@@ -149,6 +197,58 @@ private fun SpacesRoute(
     }
 
     SpacesScreen(
+        state = state,
+        onIntent = component::onIntent,
+    )
+}
+
+@Composable
+private fun TasksRoute(
+    navigator: AppNavigator,
+    spaceId: String,
+    spaceName: String,
+    currentUser: UserSession,
+    observeTasksUseCase: ObserveTasksUseCase,
+    createTaskUseCase: CreateTaskUseCase,
+    updateTaskStatusUseCase: UpdateTaskStatusUseCase,
+    deleteTaskUseCase: DeleteTaskUseCase,
+    logger: AppLogger,
+) {
+    val componentScope = rememberCoroutineScope()
+
+    val component = remember(
+        spaceId,
+        spaceName,
+    ) {
+        TasksComponent(
+            currentUser = currentUser,
+            spaceId = spaceId,
+            spaceName = spaceName,
+            observeTasksUseCase = observeTasksUseCase,
+            createTaskUseCase = createTaskUseCase,
+            updateTaskStatusUseCase = updateTaskStatusUseCase,
+            deleteTaskUseCase = deleteTaskUseCase,
+            idGenerator = UuidGenerator,
+            clockProvider = SystemClockProvider,
+            logger = logger,
+            componentScope = componentScope,
+            dispatchers = DefaultAppDispatchers
+        )
+    }
+
+    val state by component.state.collectAsState()
+
+    LaunchedEffect(component) {
+        component.effects.collect { effect ->
+            when (effect) {
+                TasksEffect.NavigateBack -> {
+                    navigator.navigateBack()
+                }
+            }
+        }
+    }
+
+    TasksScreen(
         state = state,
         onIntent = component::onIntent,
     )

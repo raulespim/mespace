@@ -33,6 +33,12 @@ kotlin {
             implementation(libs.kotlinx.coroutines.android)
         }
         commonMain.dependencies {
+            implementation(project(":core:common"))
+            implementation(project(":core:designsystem"))
+            implementation(project(":core:logging"))
+            implementation(project(":feature:spaces"))
+            implementation(project(":feature:tasks"))
+
             implementation(libs.compose.runtime)
             implementation(libs.compose.foundation)
             implementation(libs.compose.material3)
