@@ -1,0 +1,79 @@
+CREATE TABLE tasks (
+    id TEXT NOT NULL PRIMARY KEY,
+    spaceId TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    status TEXT NOT NULL,
+    priority TEXT NOT NULL,
+    assignedToUserId TEXT,
+    createdByUserId TEXT NOT NULL,
+    createdAtMillis INTEGER NOT NULL,
+    updatedAtMillis INTEGER NOT NULL,
+    completedAtMillis INTEGER
+);
+
+selectTasksBySpaceId:
+SELECT *
+FROM tasks
+WHERE spaceId = ?
+ORDER BY
+    CASE status
+        WHEN 'IN_PROGRESS' THEN 0
+        WHEN 'PENDING' THEN 1
+        WHEN 'DONE' THEN 2
+        ELSE 3
+    END ASC,
+    CASE priority
+        WHEN 'HIGH' THEN 0
+        WHEN 'MEDIUM' THEN 1
+        WHEN 'LOW' THEN 2
+        ELSE 3
+    END ASC,
+    updatedAtMillis DESC,
+    createdAtMillis DESC;
+
+selectTaskById:
+SELECT *
+FROM tasks
+WHERE spaceId = ?
+  AND id = ?
+LIMIT 1;
+
+selectTaskByIdIgnoringSpace:
+SELECT *
+FROM tasks
+WHERE id = ?
+LIMIT 1;
+
+insertTask:
+INSERT INTO tasks(
+    id,
+    spaceId,
+    title,
+    description,
+    status,
+    priority,
+    assignedToUserId,
+    createdByUserId,
+    createdAtMillis,
+    updatedAtMillis,
+    completedAtMillis
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+updateTaskStatus:
+UPDATE tasks
+SET status = ?,
+    updatedAtMillis = ?,
+    completedAtMillis = ?
+WHERE spaceId = ?
+  AND id = ?;
+
+deleteTask:
+DELETE FROM tasks
+WHERE spaceId = ?
+  AND id = ?;
+
+deleteTasksBySpaceId:
+DELETE FROM tasks
+WHERE spaceId = ?;

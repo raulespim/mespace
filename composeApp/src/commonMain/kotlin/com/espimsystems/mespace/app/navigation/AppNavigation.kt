@@ -12,15 +12,20 @@ import com.espimsystems.mespace.core.common.coroutines.DefaultAppDispatchers
 import com.espimsystems.mespace.core.common.id.UuidGenerator
 import com.espimsystems.mespace.core.common.session.UserSession
 import com.espimsystems.mespace.core.common.time.SystemClockProvider
+import com.espimsystems.mespace.core.database.MeSpaceDatabase
 import com.espimsystems.mespace.core.logging.AppLogTags
 import com.espimsystems.mespace.core.logging.AppLogger
 import com.espimsystems.mespace.feature.spaces.data.repository.FakeSpacesRepository
+import com.espimsystems.mespace.feature.spaces.data.repository.SqlDelightSpacesRepository
+import com.espimsystems.mespace.feature.spaces.domain.repository.SpacesRepository
 import com.espimsystems.mespace.feature.spaces.domain.usecase.CreateSpaceUseCase
 import com.espimsystems.mespace.feature.spaces.domain.usecase.ObserveSpacesUseCase
 import com.espimsystems.mespace.feature.spaces.presentation.SpacesComponent
 import com.espimsystems.mespace.feature.spaces.presentation.SpacesEffect
 import com.espimsystems.mespace.feature.spaces.presentation.SpacesScreen
 import com.espimsystems.mespace.feature.tasks.data.repository.FakeTasksRepository
+import com.espimsystems.mespace.feature.tasks.data.repository.SqlDelightTasksRepository
+import com.espimsystems.mespace.feature.tasks.domain.repository.TasksRepository
 import com.espimsystems.mespace.feature.tasks.domain.usecase.CreateTaskUseCase
 import com.espimsystems.mespace.feature.tasks.domain.usecase.DeleteTaskUseCase
 import com.espimsystems.mespace.feature.tasks.domain.usecase.ObserveTasksUseCase
@@ -34,7 +39,54 @@ import com.espimsystems.mespace.features.welcome.presentation.WelcomeScreen
 
 @Composable
 fun AppNavigation(
-    logger: AppLogger
+    logger: AppLogger,
+    database: MeSpaceDatabase,
+) {
+    val spacesRepository = remember(database) {
+        SqlDelightSpacesRepository(
+            database = database,
+            appDispatchers = DefaultAppDispatchers,
+        )
+    }
+
+    val tasksRepository = remember(database) {
+        SqlDelightTasksRepository(
+            database = database,
+            appDispatchers = DefaultAppDispatchers,
+        )
+    }
+
+    AppNavigationContent(
+        logger = logger,
+        spacesRepository = spacesRepository,
+        tasksRepository = tasksRepository,
+    )
+}
+
+@Composable
+fun PreviewAppNavigation(
+    logger: AppLogger,
+) {
+    val spacesRepository = remember {
+        FakeSpacesRepository()
+    }
+
+    val tasksRepository = remember {
+        FakeTasksRepository()
+    }
+
+    AppNavigationContent(
+        logger = logger,
+        spacesRepository = spacesRepository,
+        tasksRepository = tasksRepository,
+    )
+}
+
+@Composable
+private fun AppNavigationContent(
+    logger: AppLogger,
+    spacesRepository: SpacesRepository,
+    tasksRepository: TasksRepository,
 ) {
     val navigator = remember { AppNavigator() }
 
@@ -52,17 +104,13 @@ fun AppNavigation(
         )
     }
 
-    val spacesRepository = remember {
-        FakeSpacesRepository()
-    }
-
-    val observeSpacesUseCase = remember {
+    val observeSpacesUseCase = remember(spacesRepository) {
         ObserveSpacesUseCase(
             spacesRepository = spacesRepository,
         )
     }
 
-    val createSpaceUseCase = remember {
+    val createSpaceUseCase = remember(spacesRepository) {
         CreateSpaceUseCase(
             spacesRepository = spacesRepository,
             idGenerator = UuidGenerator,
@@ -70,15 +118,11 @@ fun AppNavigation(
         )
     }
 
-    val tasksRepository = remember {
-        FakeTasksRepository()
-    }
-
-    val observeTasksUseCase = remember {
+    val observeTasksUseCase = remember(tasksRepository) {
         ObserveTasksUseCase(tasksRepository)
     }
 
-    val createTaskUseCase = remember {
+    val createTaskUseCase = remember(tasksRepository) {
         CreateTaskUseCase(
             repository = tasksRepository,
             idGenerator = UuidGenerator,
@@ -86,14 +130,14 @@ fun AppNavigation(
         )
     }
 
-    val updateTaskStatusUseCase = remember {
+    val updateTaskStatusUseCase = remember(tasksRepository) {
         UpdateTaskStatusUseCase(
             repository = tasksRepository,
             clockProvider = SystemClockProvider,
         )
     }
 
-    val deleteTaskUseCase = remember {
+    val deleteTaskUseCase = remember(tasksRepository) {
         DeleteTaskUseCase(tasksRepository)
     }
 

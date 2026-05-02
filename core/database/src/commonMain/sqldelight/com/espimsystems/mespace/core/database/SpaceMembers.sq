@@ -1,0 +1,39 @@
+CREATE TABLE space_members (
+    id TEXT NOT NULL PRIMARY KEY,
+    spaceId TEXT NOT NULL,
+    userId TEXT NOT NULL,
+    displayName TEXT NOT NULL,
+    email TEXT,
+    role TEXT NOT NULL,
+    joinedAtEpochMillis INTEGER NOT NULL,
+    updatedAtEpochMillis INTEGER NOT NULL,
+    isActive INTEGER NOT NULL
+);
+
+selectMembersBySpaceId:
+SELECT *
+FROM space_members
+WHERE spaceId = ?
+ORDER BY joinedAtEpochMillis ASC;
+
+selectActiveMemberBySpaceAndUser:
+SELECT *
+FROM space_members
+WHERE spaceId = ?
+  AND userId = ?
+  AND isActive = 1
+LIMIT 1;
+
+insertSpaceMember:
+INSERT INTO space_members(
+    id,
+    spaceId,
+    userId,
+    displayName,
+    email,
+    role,
+    joinedAtEpochMillis,
+    updatedAtEpochMillis,
+    isActive
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);

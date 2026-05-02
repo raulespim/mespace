@@ -34,6 +34,7 @@ kotlin {
         }
         commonMain.dependencies {
             implementation(project(":core:common"))
+            implementation(project(":core:database"))
             implementation(project(":core:designsystem"))
             implementation(project(":core:logging"))
             implementation(project(":feature:spaces"))
@@ -87,4 +88,3 @@ android {
 dependencies {
     debugImplementation(libs.compose.uiTooling)
 }
-

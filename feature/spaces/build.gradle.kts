@@ -68,6 +68,7 @@ kotlin {
         commonMain {
             dependencies {
                 implementation(project(":core:common"))
+                implementation(project(":core:database"))
                 implementation(project(":core:designsystem"))
                 implementation(project(":core:logging"))
 
@@ -77,6 +78,7 @@ kotlin {
                 implementation(libs.compose.ui)
 
                 implementation(libs.kotlinx.coroutines.core)
+                implementation(libs.sqldelight.coroutines.extensions)
             }
         }
 

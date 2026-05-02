@@ -1,0 +1,41 @@
+CREATE TABLE spaces (
+    id TEXT NOT NULL PRIMARY KEY,
+    name TEXT NOT NULL,
+    ownerUserId TEXT NOT NULL,
+    createdAtEpochMillis INTEGER NOT NULL,
+    updatedAtEpochMillis INTEGER NOT NULL,
+    archivedAtEpochMillis INTEGER
+);
+
+selectSpacesForUser:
+SELECT spaces.*
+FROM spaces
+INNER JOIN space_members ON spaces.id = space_members.spaceId
+WHERE space_members.userId = ?
+  AND space_members.isActive = 1
+  AND spaces.archivedAtEpochMillis IS NULL
+ORDER BY spaces.updatedAtEpochMillis DESC;
+
+selectSpaceById:
+SELECT *
+FROM spaces
+WHERE id = ?
+  AND archivedAtEpochMillis IS NULL
+LIMIT 1;
+
+selectSpaceByIdIncludingArchived:
+SELECT *
+FROM spaces
+WHERE id = ?
+LIMIT 1;
+
+insertSpace:
+INSERT INTO spaces(
+    id,
+    name,
+    ownerUserId,
+    createdAtEpochMillis,
+    updatedAtEpochMillis,
+    archivedAtEpochMillis
+)
+VALUES (?, ?, ?, ?, ?, ?);
