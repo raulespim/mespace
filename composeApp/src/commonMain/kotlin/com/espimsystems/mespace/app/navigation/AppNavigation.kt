@@ -79,11 +79,18 @@ fun AppNavigation(
     }
 
     val createTaskUseCase = remember {
-        CreateTaskUseCase(tasksRepository)
+        CreateTaskUseCase(
+            repository = tasksRepository,
+            idGenerator = UuidGenerator,
+            clockProvider = SystemClockProvider,
+        )
     }
 
     val updateTaskStatusUseCase = remember {
-        UpdateTaskStatusUseCase(tasksRepository)
+        UpdateTaskStatusUseCase(
+            repository = tasksRepository,
+            clockProvider = SystemClockProvider,
+        )
     }
 
     val deleteTaskUseCase = remember {
@@ -228,8 +235,6 @@ private fun TasksRoute(
             createTaskUseCase = createTaskUseCase,
             updateTaskStatusUseCase = updateTaskStatusUseCase,
             deleteTaskUseCase = deleteTaskUseCase,
-            idGenerator = UuidGenerator,
-            clockProvider = SystemClockProvider,
             logger = logger,
             componentScope = componentScope,
             dispatchers = DefaultAppDispatchers

@@ -1,27 +1,32 @@
-package com.espimsystems.mespace.feature.tasks.presentation.ui
+package com.espimsystems.mespace.feature.tasks.presentation.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import com.espimsystems.mespace.core.designsystem.component.MeSpaceTextButton
+import com.espimsystems.mespace.core.designsystem.theme.MeSpaceTheme
 import com.espimsystems.mespace.feature.tasks.domain.model.TaskPriority
 import com.espimsystems.mespace.feature.tasks.domain.model.TaskStatus
 import com.espimsystems.mespace.feature.tasks.presentation.TaskListItemUiModel
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TaskItem(
     task: TaskListItemUiModel,
@@ -33,21 +38,25 @@ fun TaskItem(
 
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(MeSpaceTheme.radius.small),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            containerColor = task.containerColor,
+        ),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = MeSpaceTheme.elevation.small,
         ),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(MeSpaceTheme.spacing.large),
+            verticalArrangement = Arrangement.spacedBy(MeSpaceTheme.spacing.medium),
         ) {
             Column(
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(MeSpaceTheme.spacing.extraSmall),
             ) {
                 Text(
                     text = task.title,
                     style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
                     textDecoration = if (isDone) {
                         TextDecoration.LineThrough
                     } else {
@@ -72,16 +81,33 @@ fun TaskItem(
                 }
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(MeSpaceTheme.spacing.small),
+                verticalArrangement = Arrangement.spacedBy(MeSpaceTheme.spacing.small),
             ) {
                 FilterChip(
-                    selected = isDone,
+                    selected = task.status == TaskStatus.DONE,
                     onClick = onStatusClick,
+                    enabled = !task.isUpdating && !task.isDeleting,
                     label = {
-                        Text(text = task.status.label)
+                        Text(
+                            text = if (task.isUpdating) {
+                                "Atualizando..."
+                            } else {
+                                task.status.label
+                            },
+                            color = task.status.contentColor,
+                        )
+                    },
+                    leadingIcon = if (task.isUpdating) {
+                        {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        }
+                    } else {
+                        null
                     },
                 )
 
@@ -92,15 +118,34 @@ fun TaskItem(
                     },
                 )
 
-                TextButton(
+                MeSpaceTextButton(
+                    text = if (task.isDeleting) {
+                        "Removendo..."
+                    } else {
+                        "Remover"
+                    },
                     onClick = onDeleteClick,
-                ) {
-                    Text(text = "Remover")
-                }
+                    enabled = !task.isDeleting && !task.isUpdating,
+                )
             }
         }
     }
 }
+
+private val TaskListItemUiModel.containerColor: Color
+    @Composable
+    get() = when (status) {
+        TaskStatus.DONE -> MeSpaceTheme.semanticColors.successContainer.copy(alpha = 0.36f)
+        else -> MaterialTheme.colorScheme.surface
+    }
+
+private val TaskStatus.contentColor: Color
+    @Composable
+    get() = when (this) {
+        TaskStatus.PENDING -> MeSpaceTheme.semanticColors.warning
+        TaskStatus.IN_PROGRESS -> MeSpaceTheme.semanticColors.info
+        TaskStatus.DONE -> MeSpaceTheme.semanticColors.success
+    }
 
 private val TaskStatus.label: String
     get() = when (this) {

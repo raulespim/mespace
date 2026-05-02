@@ -1,23 +1,30 @@
-package com.espimsystems.mespace.feature.tasks.presentation.ui
+package com.espimsystems.mespace.feature.tasks.presentation.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.Modifier
+import com.espimsystems.mespace.core.designsystem.component.MeSpaceButton
+import com.espimsystems.mespace.core.designsystem.component.MeSpaceTextButton
+import com.espimsystems.mespace.core.designsystem.theme.MeSpaceTheme
 import com.espimsystems.mespace.feature.tasks.domain.model.TaskPriority
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun CreateTaskDialog(
     title: String,
     description: String,
     selectedPriority: TaskPriority,
     isLoading: Boolean,
+    canConfirm: Boolean,
     errorMessage: String?,
     onTitleChanged: (String) -> Unit,
     onDescriptionChanged: (String) -> Unit,
@@ -37,12 +44,13 @@ fun CreateTaskDialog(
         text = {
             Column(
                 verticalArrangement = Arrangement.spacedBy(
-                    space = 12.dp,
+                    space = MeSpaceTheme.spacing.medium,
                 ),
             ) {
                 OutlinedTextField(
                     value = title,
                     onValueChange = onTitleChanged,
+                    modifier = Modifier.fillMaxWidth(),
                     enabled = !isLoading,
                     singleLine = true,
                     label = {
@@ -53,6 +61,7 @@ fun CreateTaskDialog(
                 OutlinedTextField(
                     value = description,
                     onValueChange = onDescriptionChanged,
+                    modifier = Modifier.fillMaxWidth(),
                     enabled = !isLoading,
                     minLines = 2,
                     label = {
@@ -62,10 +71,9 @@ fun CreateTaskDialog(
 
                 Text(text = "Prioridade")
 
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(
-                        space = 8.dp,
-                    ),
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(MeSpaceTheme.spacing.small),
+                    verticalArrangement = Arrangement.spacedBy(MeSpaceTheme.spacing.small),
                 ) {
                     TaskPriority.entries.forEach { priority ->
                         FilterChip(
@@ -82,31 +90,31 @@ fun CreateTaskDialog(
                 }
 
                 errorMessage?.let { message ->
-                    Text(text = message)
+                    Text(
+                        text = message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
                 }
             }
         },
         confirmButton = {
-            TextButton(
+            MeSpaceButton(
+                text = if (isLoading) {
+                    "Criando..."
+                } else {
+                    "Criar"
+                },
                 onClick = onConfirm,
-                enabled = !isLoading,
-            ) {
-                Text(
-                    text = if (isLoading) {
-                        "Criando..."
-                    } else {
-                        "Criar"
-                    },
-                )
-            }
+                enabled = canConfirm,
+            )
         },
         dismissButton = {
-            TextButton(
+            MeSpaceTextButton(
+                text = "Cancelar",
                 onClick = onDismiss,
                 enabled = !isLoading,
-            ) {
-                Text(text = "Cancelar")
-            }
+            )
         },
     )
 }

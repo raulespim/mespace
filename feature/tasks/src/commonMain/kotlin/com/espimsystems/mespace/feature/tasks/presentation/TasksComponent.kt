@@ -2,15 +2,12 @@ package com.espimsystems.mespace.feature.tasks.presentation
 
 import com.espimsystems.mespace.core.common.coroutines.AppDispatchers
 import com.espimsystems.mespace.core.common.error.AppError
-import com.espimsystems.mespace.core.common.id.IdGenerator
 import com.espimsystems.mespace.core.common.mvi.MviComponent
 import com.espimsystems.mespace.core.common.result.AppResult
 import com.espimsystems.mespace.core.common.session.UserSession
-import com.espimsystems.mespace.core.common.time.ClockProvider
 import com.espimsystems.mespace.core.logging.AppLogTags
 import com.espimsystems.mespace.core.logging.AppLogger
 import com.espimsystems.mespace.feature.tasks.domain.model.TaskPriority
-import com.espimsystems.mespace.feature.tasks.domain.model.TaskStatus
 import com.espimsystems.mespace.feature.tasks.domain.usecase.CreateTaskInput
 import com.espimsystems.mespace.feature.tasks.domain.usecase.CreateTaskUseCase
 import com.espimsystems.mespace.feature.tasks.domain.usecase.DeleteTaskUseCase
@@ -28,8 +25,6 @@ class TasksComponent(
     private val createTaskUseCase: CreateTaskUseCase,
     private val updateTaskStatusUseCase: UpdateTaskStatusUseCase,
     private val deleteTaskUseCase: DeleteTaskUseCase,
-    private val idGenerator: IdGenerator,
-    private val clockProvider: ClockProvider,
     private val logger: AppLogger,
     componentScope: CoroutineScope,
     dispatchers: AppDispatchers,
@@ -43,11 +38,11 @@ class TasksComponent(
 ) {
 
     init {
-        observeTasks()
-
         logger.debug(AppLogTags.TasksComponent) {
             "TasksComponent initialized. spaceId=$spaceId, spaceName=$spaceName"
         }
+
+        observeTasks()
     }
 
     override fun handleIntent(intent: TasksIntent) {
@@ -61,7 +56,9 @@ class TasksComponent(
             TasksIntent.CreateTaskConfirmed -> handleCreateTaskConfirmed()
             is TasksIntent.TaskStatusClicked -> handleTaskStatusClicked(intent)
             is TasksIntent.DeleteTaskClicked -> handleDeleteTaskClicked(intent)
-            TasksIntent.GeneralErrorConsumed -> handleErrorMessageShown()
+            TasksIntent.DeleteTaskDismissed -> handleDeleteTaskDismissed()
+            TasksIntent.DeleteTaskConfirmed -> handleDeleteTaskConfirmed()
+            TasksIntent.GeneralErrorConsumed -> handleGeneralErrorConsumed()
         }
     }
 
@@ -73,10 +70,17 @@ class TasksComponent(
         launchSafely(
             dispatcher = dispatchers.main,
             onError = { throwable ->
+                logger.error(
+                    tag = AppLogTags.TasksComponent,
+                    throwable = throwable,
+                ) {
+                    "Failed to observe tasks. spaceId=$spaceId"
+                }
+
                 updateState {
                     copy(
                         isLoading = false,
-                        generalErrorMessage = throwable.message ?: "Unable to load tasks.",
+                        generalErrorMessage = LOAD_TASKS_ERROR_MESSAGE,
                     )
                 }
             },
@@ -84,20 +88,26 @@ class TasksComponent(
             observeTasksUseCase(spaceId).collectLatest { result ->
                 when (result) {
                     is AppResult.Success -> {
-                        logger.debug(AppLogTags.TasksComponent) {
-                            "Tasks updated. count=${result.data.size}, spaceId=$spaceId"
-                        }
-
                         updateState {
                             copy(
                                 isLoading = false,
-                                tasks = result.data.toUiModels(),
+                                tasks = result.data.toUiModels(
+                                    updatingTaskIds = updatingTaskIds,
+                                    deletingTaskIds = deletingTaskIds,
+                                ),
                                 generalErrorMessage = null,
                             )
                         }
                     }
 
                     is AppResult.Failure -> {
+                        logger.error(
+                            tag = AppLogTags.TasksComponent,
+                            throwable = result.error.cause,
+                        ) {
+                            "Failed to load tasks. spaceId=$spaceId"
+                        }
+
                         updateState {
                             copy(
                                 isLoading = false,
@@ -118,11 +128,12 @@ class TasksComponent(
         updateState {
             copy(
                 isCreateTaskDialogVisible = true,
+                isCreatingTask = false,
                 newTaskTitle = "",
                 newTaskDescription = "",
                 selectedPriority = TaskPriority.MEDIUM,
                 createTaskErrorMessage = null,
-                generalErrorMessage = null
+                generalErrorMessage = null,
             )
         }
 
@@ -140,7 +151,7 @@ class TasksComponent(
                 newTaskTitle = "",
                 newTaskDescription = "",
                 selectedPriority = TaskPriority.MEDIUM,
-                generalErrorMessage = null,
+                createTaskErrorMessage = null,
             )
         }
 
@@ -155,7 +166,7 @@ class TasksComponent(
         updateState {
             copy(
                 newTaskTitle = intent.title,
-                generalErrorMessage = null,
+                createTaskErrorMessage = null,
             )
         }
     }
@@ -164,7 +175,10 @@ class TasksComponent(
         intent: TasksIntent.NewTaskDescriptionChanged,
     ) {
         updateState {
-            copy(newTaskDescription = intent.description)
+            copy(
+                newTaskDescription = intent.description,
+                createTaskErrorMessage = null,
+            )
         }
     }
 
@@ -172,14 +186,24 @@ class TasksComponent(
         intent: TasksIntent.PrioritySelected,
     ) {
         updateState {
-            copy(selectedPriority = intent.priority)
+            copy(
+                selectedPriority = intent.priority,
+                createTaskErrorMessage = null,
+            )
         }
     }
 
     private fun handleCreateTaskConfirmed() {
         val currentState = state.value
 
-        if (!currentState.canCreateTask) return
+        if (currentState.isCreatingTask) return
+
+        if (currentState.newTaskTitle.isBlank()) {
+            updateState {
+                copy(createTaskErrorMessage = EMPTY_TASK_TITLE_MESSAGE)
+            }
+            return
+        }
 
         updateState {
             copy(
@@ -191,26 +215,29 @@ class TasksComponent(
         launchSafely(
             dispatcher = dispatchers.default,
             onError = { throwable ->
+                logger.error(
+                    tag = AppLogTags.TasksComponent,
+                    throwable = throwable,
+                ) {
+                    "Unexpected error while creating task. spaceId=$spaceId"
+                }
+
                 updateState {
                     copy(
                         isCreatingTask = false,
-                        createTaskErrorMessage = throwable.message ?: "Unable to create task.",
+                        createTaskErrorMessage = CREATE_TASK_ERROR_MESSAGE,
                     )
                 }
             },
         ) {
-            val now = clockProvider.nowEpochMillis()
-
             val result = createTaskUseCase(
                 CreateTaskInput(
-                    id = idGenerator.generateId(),
                     spaceId = spaceId,
                     title = currentState.newTaskTitle,
                     description = currentState.newTaskDescription,
                     priority = currentState.selectedPriority,
                     assignedToUserId = null,
                     createdByUserId = currentUser.userId,
-                    createdAtMillis = now,
                 ),
             )
 
@@ -227,8 +254,7 @@ class TasksComponent(
                             newTaskTitle = "",
                             newTaskDescription = "",
                             selectedPriority = TaskPriority.MEDIUM,
-                            generalErrorMessage = null,
-                            createTaskErrorMessage = null
+                            createTaskErrorMessage = null,
                         )
                     }
                 }
@@ -238,7 +264,7 @@ class TasksComponent(
                         tag = AppLogTags.TasksComponent,
                         throwable = result.error.cause,
                     ) {
-                        "Failed to create task. error=${result.error.message}, spaceId=$spaceId"
+                        "Failed to create task. spaceId=$spaceId"
                     }
 
                     updateState {
@@ -255,37 +281,62 @@ class TasksComponent(
     private fun handleTaskStatusClicked(
         intent: TasksIntent.TaskStatusClicked,
     ) {
+        val currentState = state.value
+        val taskId = intent.taskId
+
+        if (taskId in currentState.updatingTaskIds || taskId in currentState.deletingTaskIds) {
+            return
+        }
+
+        val nextStatus = intent.currentStatus.next()
+        val updatingTaskIds = currentState.updatingTaskIds + taskId
+
+        updateState {
+            copy(
+                updatingTaskIds = updatingTaskIds,
+                tasks = tasks.withOperationState(
+                    updatingTaskIds = updatingTaskIds,
+                    deletingTaskIds = deletingTaskIds,
+                ),
+                generalErrorMessage = null,
+            )
+        }
+
+        logger.info(AppLogTags.TasksComponent) {
+            "Updating task status. taskId=$taskId, from=${intent.currentStatus}, to=$nextStatus, spaceId=$spaceId"
+        }
+
         launchSafely(
             dispatcher = dispatchers.default,
             onError = { throwable ->
-                updateState {
-                    copy(
-                        generalErrorMessage = throwable.message ?: "Unable to update task.",
-                    )
+                logger.error(
+                    tag = AppLogTags.TasksComponent,
+                    throwable = throwable,
+                ) {
+                    "Unexpected error while updating task status. taskId=$taskId, spaceId=$spaceId"
                 }
+
+                finishTaskStatusUpdate(
+                    taskId = taskId,
+                    generalErrorMessage = UPDATE_TASK_ERROR_MESSAGE,
+                )
             },
         ) {
-            val nextStatus = intent.currentStatus.next()
-            val now = clockProvider.nowEpochMillis()
-
-            logger.info(AppLogTags.TasksComponent) {
-                "Updating task status. taskId=${intent.taskId}, from=${intent.currentStatus}, to=$nextStatus"
-            }
-
             val result = updateTaskStatusUseCase(
                 UpdateTaskStatusInput(
                     spaceId = spaceId,
-                    taskId = intent.taskId,
+                    taskId = taskId,
                     status = nextStatus,
-                    updatedAtMillis = now,
                 ),
             )
 
             when (result) {
                 is AppResult.Success -> {
-                    updateState {
-                        copy(generalErrorMessage = null)
+                    logger.info(AppLogTags.TasksComponent) {
+                        "Task status updated. taskId=$taskId, status=${result.data.status}, spaceId=$spaceId"
                     }
+
+                    finishTaskStatusUpdate(taskId = taskId)
                 }
 
                 is AppResult.Failure -> {
@@ -293,12 +344,13 @@ class TasksComponent(
                         tag = AppLogTags.TasksComponent,
                         throwable = result.error.cause,
                     ) {
-                        "Failed to update task status. taskId=${intent.taskId}"
+                        "Failed to update task status. taskId=$taskId, spaceId=$spaceId"
                     }
 
-                    updateState {
-                        copy(generalErrorMessage = result.error.toUserMessage())
-                    }
+                    finishTaskStatusUpdate(
+                        taskId = taskId,
+                        generalErrorMessage = result.error.toUserMessage(),
+                    )
                 }
             }
         }
@@ -307,30 +359,95 @@ class TasksComponent(
     private fun handleDeleteTaskClicked(
         intent: TasksIntent.DeleteTaskClicked,
     ) {
+        val currentState = state.value
+        val taskId = intent.taskId
+
+        if (taskId in currentState.updatingTaskIds || taskId in currentState.deletingTaskIds) {
+            return
+        }
+
+        val task = currentState.tasks.firstOrNull { item -> item.id == taskId }
+            ?: return
+
+        updateState {
+            copy(
+                taskPendingDeletion = TaskPendingDeletionUiModel(
+                    id = task.id,
+                    title = task.title,
+                ),
+                generalErrorMessage = null,
+            )
+        }
+
+        logger.info(AppLogTags.TasksComponent) {
+            "Delete task confirmation opened. taskId=$taskId, spaceId=$spaceId"
+        }
+    }
+
+    private fun handleDeleteTaskDismissed() {
+        val pendingDeletion = state.value.taskPendingDeletion ?: return
+
+        if (pendingDeletion.id in state.value.deletingTaskIds) return
+
+        updateState {
+            copy(taskPendingDeletion = null)
+        }
+
+        logger.debug(AppLogTags.TasksComponent) {
+            "Delete task confirmation dismissed. taskId=${pendingDeletion.id}, spaceId=$spaceId"
+        }
+    }
+
+    private fun handleDeleteTaskConfirmed() {
+        val pendingDeletion = state.value.taskPendingDeletion ?: return
+        val taskId = pendingDeletion.id
+
+        if (taskId in state.value.deletingTaskIds) return
+
+        val deletingTaskIds = state.value.deletingTaskIds + taskId
+
+        updateState {
+            copy(
+                deletingTaskIds = deletingTaskIds,
+                tasks = tasks.withOperationState(
+                    updatingTaskIds = updatingTaskIds,
+                    deletingTaskIds = deletingTaskIds,
+                ),
+                generalErrorMessage = null,
+            )
+        }
+
+        logger.info(AppLogTags.TasksComponent) {
+            "Delete task confirmed. taskId=$taskId, spaceId=$spaceId"
+        }
+
         launchSafely(
             dispatcher = dispatchers.default,
             onError = { throwable ->
-                updateState {
-                    copy(
-                        generalErrorMessage = throwable.message ?: "Unable to delete task.",
-                    )
+                logger.error(
+                    tag = AppLogTags.TasksComponent,
+                    throwable = throwable,
+                ) {
+                    "Unexpected error while deleting task. taskId=$taskId, spaceId=$spaceId"
                 }
+
+                finishTaskDeletion(
+                    taskId = taskId,
+                    clearPendingDeletion = true,
+                    generalErrorMessage = DELETE_TASK_ERROR_MESSAGE,
+                )
             },
         ) {
-            logger.info(AppLogTags.TasksComponent) {
-                "Deleting task. taskId=${intent.taskId}, spaceId=$spaceId"
-            }
-
-            val result = deleteTaskUseCase(
-                spaceId = spaceId,
-                taskId = intent.taskId,
-            )
-
-            when (result) {
+            when (val result = deleteTaskUseCase(spaceId = spaceId, taskId = taskId)) {
                 is AppResult.Success -> {
-                    updateState {
-                        copy(generalErrorMessage = null)
+                    logger.info(AppLogTags.TasksComponent) {
+                        "Task deleted successfully. taskId=$taskId, spaceId=$spaceId"
                     }
+
+                    finishTaskDeletion(
+                        taskId = taskId,
+                        clearPendingDeletion = true,
+                    )
                 }
 
                 is AppResult.Failure -> {
@@ -338,32 +455,109 @@ class TasksComponent(
                         tag = AppLogTags.TasksComponent,
                         throwable = result.error.cause,
                     ) {
-                        "Failed to delete task. taskId=${intent.taskId}"
+                        "Failed to delete task. taskId=$taskId, spaceId=$spaceId"
                     }
 
-                    updateState {
-                        copy(generalErrorMessage = result.error.toUserMessage())
-                    }
+                    finishTaskDeletion(
+                        taskId = taskId,
+                        clearPendingDeletion = true,
+                        generalErrorMessage = result.error.toUserMessage(),
+                    )
                 }
             }
         }
     }
 
-    private fun handleErrorMessageShown() {
+    private fun finishTaskStatusUpdate(
+        taskId: String,
+        generalErrorMessage: String? = null,
+    ) {
         updateState {
-            copy(generalErrorMessage = null, createTaskErrorMessage = null)
+            val updatedTaskIds = updatingTaskIds - taskId
+
+            copy(
+                updatingTaskIds = updatedTaskIds,
+                tasks = tasks.withOperationState(
+                    updatingTaskIds = updatedTaskIds,
+                    deletingTaskIds = deletingTaskIds,
+                ),
+                generalErrorMessage = generalErrorMessage,
+            )
+        }
+    }
+
+    private fun finishTaskDeletion(
+        taskId: String,
+        clearPendingDeletion: Boolean,
+        generalErrorMessage: String? = null,
+    ) {
+        updateState {
+            val updatedDeletingTaskIds = deletingTaskIds - taskId
+
+            copy(
+                deletingTaskIds = updatedDeletingTaskIds,
+                tasks = tasks.withOperationState(
+                    updatingTaskIds = updatingTaskIds,
+                    deletingTaskIds = updatedDeletingTaskIds,
+                ),
+                taskPendingDeletion = if (clearPendingDeletion) null else taskPendingDeletion,
+                generalErrorMessage = generalErrorMessage,
+            )
+        }
+    }
+
+    private fun handleGeneralErrorConsumed() {
+        updateState {
+            copy(generalErrorMessage = null)
         }
     }
 
     private fun AppError.toUserMessage(): String {
         return when (this) {
-            is AppError.Network -> "Check your internet connection and try again."
-            is AppError.Unauthorized -> "You need to sign in again."
-            is AppError.Forbidden -> "You do not have permission to do this."
-            is AppError.NotFound -> "This task was not found."
-            is AppError.Validation -> message ?: "Please check the information and try again."
-            is AppError.Storage -> "Unable to save your data right now."
-            is AppError.Unknown -> "Something went wrong. Please try again."
+            is AppError.Network -> "Verifique sua conexão e tente novamente."
+            is AppError.Unauthorized -> "Entre novamente para continuar."
+            is AppError.Forbidden -> "Você não tem permissão para fazer isso."
+            is AppError.NotFound -> "Esta tarefa não foi encontrada."
+            is AppError.Validation -> toValidationMessage()
+            is AppError.Storage -> "Não foi possível salvar a tarefa agora."
+            is AppError.Unknown -> "Algo deu errado. Tente novamente."
         }
+    }
+
+    private fun AppError.Validation.toValidationMessage(): String {
+        return when (field) {
+            FIELD_SPACE_ID -> "Não foi possível identificar o espaço."
+            FIELD_TASK_ID -> "Não foi possível identificar a tarefa."
+            FIELD_TITLE -> {
+                if (message?.contains("longer") == true) {
+                    "Use um título com até $TASK_TITLE_MAX_LENGTH caracteres."
+                } else {
+                    EMPTY_TASK_TITLE_MESSAGE
+                }
+            }
+            FIELD_DESCRIPTION -> "Use uma descrição com até $TASK_DESCRIPTION_MAX_LENGTH caracteres."
+            FIELD_CREATED_BY_USER_ID -> "Não foi possível identificar o usuário atual."
+            FIELD_ID -> "Esta tarefa já existe."
+            else -> "Confira as informações da tarefa e tente novamente."
+        }
+    }
+
+    private companion object {
+
+        const val FIELD_SPACE_ID = "spaceId"
+        const val FIELD_TASK_ID = "taskId"
+        const val FIELD_TITLE = "title"
+        const val FIELD_DESCRIPTION = "description"
+        const val FIELD_CREATED_BY_USER_ID = "createdByUserId"
+        const val FIELD_ID = "id"
+
+        const val TASK_TITLE_MAX_LENGTH = 80
+        const val TASK_DESCRIPTION_MAX_LENGTH = 280
+
+        const val EMPTY_TASK_TITLE_MESSAGE = "Informe um título para a tarefa."
+        const val LOAD_TASKS_ERROR_MESSAGE = "Não foi possível carregar as tarefas. Tente novamente."
+        const val CREATE_TASK_ERROR_MESSAGE = "Não foi possível criar a tarefa. Tente novamente."
+        const val UPDATE_TASK_ERROR_MESSAGE = "Não foi possível atualizar a tarefa. Tente novamente."
+        const val DELETE_TASK_ERROR_MESSAGE = "Não foi possível remover a tarefa. Tente novamente."
     }
 }

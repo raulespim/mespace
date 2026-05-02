@@ -15,8 +15,8 @@ class DeleteTaskUseCase(
         if (spaceId.isBlank()) {
             return AppResult.Failure(
                 AppError.Validation(
-                    message = "spaceId cannot be blank.",
-                    cause = IllegalArgumentException()
+                    field = FIELD_SPACE_ID,
+                    message = "Space id cannot be empty.",
                 ),
             )
         }
@@ -24,8 +24,8 @@ class DeleteTaskUseCase(
         if (taskId.isBlank()) {
             return AppResult.Failure(
                 AppError.Validation(
-                    message = "taskId cannot be blank.",
-                    cause = IllegalArgumentException()
+                    field = FIELD_TASK_ID,
+                    message = "Task id cannot be empty.",
                 ),
             )
         }
@@ -34,5 +34,11 @@ class DeleteTaskUseCase(
             spaceId = spaceId,
             taskId = taskId,
         )
+    }
+
+    private companion object {
+
+        const val FIELD_SPACE_ID = "spaceId"
+        const val FIELD_TASK_ID = "taskId"
     }
 }

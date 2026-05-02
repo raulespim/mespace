@@ -18,12 +18,21 @@ data class TasksUiState(
     val selectedPriority: TaskPriority = TaskPriority.MEDIUM,
     val createTaskErrorMessage: String? = null,
     val generalErrorMessage: String? = null,
+    val updatingTaskIds: Set<String> = emptySet(),
+    val deletingTaskIds: Set<String> = emptySet(),
+    val taskPendingDeletion: TaskPendingDeletionUiModel? = null,
 ) : UiState {
     val isEmpty: Boolean
         get() = !isLoading && tasks.isEmpty()
 
     val canCreateTask: Boolean
         get() = newTaskTitle.isNotBlank() && !isCreatingTask
+
+    val isPendingDeletionInProgress: Boolean
+        get() = taskPendingDeletion
+            ?.id
+            ?.let { taskId -> taskId in deletingTaskIds }
+            ?: false
 }
 
 data class TaskListItemUiModel(
@@ -33,6 +42,13 @@ data class TaskListItemUiModel(
     val status: TaskStatus,
     val priority: TaskPriority,
     val assignedToLabel: String?,
+    val isUpdating: Boolean = false,
+    val isDeleting: Boolean = false,
+)
+
+data class TaskPendingDeletionUiModel(
+    val id: String,
+    val title: String,
 )
 
 sealed interface TasksIntent : UiIntent {
@@ -65,6 +81,10 @@ sealed interface TasksIntent : UiIntent {
     data class DeleteTaskClicked(
         val taskId: String,
     ) : TasksIntent
+
+    data object DeleteTaskDismissed : TasksIntent
+
+    data object DeleteTaskConfirmed : TasksIntent
 
     data object GeneralErrorConsumed : TasksIntent
 }

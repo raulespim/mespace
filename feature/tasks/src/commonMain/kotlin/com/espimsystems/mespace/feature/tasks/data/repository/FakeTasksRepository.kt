@@ -3,6 +3,7 @@ package com.espimsystems.mespace.feature.tasks.data.repository
 import com.espimsystems.mespace.core.common.error.AppError
 import com.espimsystems.mespace.core.common.result.AppResult
 import com.espimsystems.mespace.feature.tasks.domain.model.Task
+import com.espimsystems.mespace.feature.tasks.domain.model.TaskPriority
 import com.espimsystems.mespace.feature.tasks.domain.model.TaskStatus
 import com.espimsystems.mespace.feature.tasks.domain.repository.TasksRepository
 import kotlinx.coroutines.flow.Flow
@@ -16,16 +17,11 @@ class FakeTasksRepository : TasksRepository {
 
     override fun observeTasks(spaceId: String): Flow<AppResult<List<Task>>> {
         return tasks.map { currentTasks ->
-            val filteredTasks = currentTasks
-                .asSequence()
-                .filter { task -> task.spaceId == spaceId }
-                .sortedWith(
-                    compareBy<Task> { task -> task.status.sortOrder }
-                        .thenByDescending { task -> task.createdAtMillis },
-                )
-                .toList()
-
-            AppResult.Success(filteredTasks)
+            AppResult.Success(
+                currentTasks
+                    .filter { task -> task.spaceId == spaceId }
+                    .sortedForDisplay(),
+            )
         }
     }
 
@@ -37,8 +33,8 @@ class FakeTasksRepository : TasksRepository {
         if (alreadyExists) {
             return AppResult.Failure(
                 AppError.Validation(
+                    field = FIELD_ID,
                     message = "Task already exists. id=${task.id}",
-                    cause = IllegalStateException()
                 ),
             )
         }
@@ -82,11 +78,11 @@ class FakeTasksRepository : TasksRepository {
         return updatedTask
             ?.let { task ->
                 AppResult.Success(task)
-            } ?: AppResult.Failure(
-            AppError.NotFound(
-                message = "Task not found. id=$taskId",
-                cause = NoSuchElementException()
-            ),
+            }
+            ?: AppResult.Failure(
+                AppError.NotFound(
+                    message = "Task not found. id=$taskId",
+                ),
             )
     }
 
@@ -102,7 +98,6 @@ class FakeTasksRepository : TasksRepository {
             return AppResult.Failure(
                 AppError.NotFound(
                     message = "Task not found. id=$taskId",
-                    cause = NoSuchElementException()
                 ),
             )
         }
@@ -118,8 +113,29 @@ class FakeTasksRepository : TasksRepository {
 
     private val TaskStatus.sortOrder: Int
         get() = when (this) {
-            TaskStatus.PENDING -> 0
-            TaskStatus.IN_PROGRESS -> 1
+            TaskStatus.IN_PROGRESS -> 0
+            TaskStatus.PENDING -> 1
             TaskStatus.DONE -> 2
         }
+
+    private val Task.prioritySortOrder: Int
+        get() = when (priority) {
+            TaskPriority.HIGH -> 0
+            TaskPriority.MEDIUM -> 1
+            TaskPriority.LOW -> 2
+        }
+
+    private fun List<Task>.sortedForDisplay(): List<Task> {
+        return sortedWith(
+            compareBy<Task> { task -> task.status.sortOrder }
+                .thenBy { task -> task.prioritySortOrder }
+                .thenByDescending { task -> task.updatedAtMillis.coerceAtLeast(task.createdAtMillis) }
+                .thenBy { task -> task.id },
+        )
+    }
+
+    private companion object {
+
+        const val FIELD_ID = "id"
+    }
 }

@@ -2,13 +2,34 @@ package com.espimsystems.mespace.feature.tasks.presentation
 
 import com.espimsystems.mespace.feature.tasks.domain.model.Task
 
-internal fun List<Task>.toUiModels(): List<TaskListItemUiModel> {
+internal fun List<Task>.toUiModels(
+    updatingTaskIds: Set<String> = emptySet(),
+    deletingTaskIds: Set<String> = emptySet(),
+): List<TaskListItemUiModel> {
     return map { task ->
-        task.toUiModel()
+        task.toUiModel(
+            isUpdating = task.id in updatingTaskIds,
+            isDeleting = task.id in deletingTaskIds,
+        )
     }
 }
 
-private fun Task.toUiModel(): TaskListItemUiModel {
+internal fun List<TaskListItemUiModel>.withOperationState(
+    updatingTaskIds: Set<String>,
+    deletingTaskIds: Set<String>,
+): List<TaskListItemUiModel> {
+    return map { task ->
+        task.copy(
+            isUpdating = task.id in updatingTaskIds,
+            isDeleting = task.id in deletingTaskIds,
+        )
+    }
+}
+
+private fun Task.toUiModel(
+    isUpdating: Boolean,
+    isDeleting: Boolean,
+): TaskListItemUiModel {
     return TaskListItemUiModel(
         id = id,
         title = title,
@@ -18,5 +39,7 @@ private fun Task.toUiModel(): TaskListItemUiModel {
         assignedToLabel = assignedToUserId?.let { userId ->
             "Responsável: $userId"
         },
+        isUpdating = isUpdating,
+        isDeleting = isDeleting,
     )
 }
